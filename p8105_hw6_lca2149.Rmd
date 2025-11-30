@@ -1,0 +1,45 @@
+---
+title: "p8105_hw6_lca2149"
+output: github_document
+date: "2025-11-30"
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(dplyr)
+library(readxl)
+library(haven)
+library(broom)
+library(knitr)
+
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+```
+
+## Problem 1
+```{r}
+#Import and clean data
+homicide_df =
+  read.csv("data/homicide-data.csv") |>
+mutate(
+    city_state = paste(city, state, sep = ", "),
+    solved_binary = ifelse(disposition == "Closed by arrest", 1, 0),
+    victim_age = as.numeric(victim_age)) |>
+filter(
+    !(city_state == c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL")),
+    victim_race == c("White", "Black"))
+```
+
