@@ -36,10 +36,66 @@ homicide_df =
   read.csv("data/homicide-data.csv") |>
 mutate(
     city_state = paste(city, state, sep = ", "),
-    solved_binary = ifelse(disposition == "Closed by arrest", 1, 0),
+    case_closed = ifelse(disposition == "Closed by arrest", 1, 0),
     victim_age = as.numeric(victim_age)) |>
 filter(
-    !(city_state == c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL")),
-    victim_race == c("White", "Black"))
+    !(city_state %in% c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, OK", "Tulsa, AL")),
+    victim_race %in% c("White", "Black"))
 ```
 
+```{r}
+# For baltimore only, use glm to fit a logistic regression with resolved vs unresolved as the outcome.
+baltimore_df <- homicide_df |>
+  filter(city_state == "Baltimore, MD") 
+  
+fit = glm(
+  case_closed ~ victim_age + victim_sex + victim_race, data = baltimore_df,
+family=binomial()
+)
+
+
+results <- tidy(fit, exponentiate = TRUE, conf.int = TRUE)|>
+    knitr::kable()
+results
+```
+
+The adjusted OR for solving homicides comparing male victims to female victims keeping all other variables fixed:
+victim_sexMale estimate = 0.43 (95% CI: 0.32 - 0.56). 
+
+```{r}
+# Run lgm for each of the cities in our dataset, extract adjusted OR for solving homicides comparing male victims to female victims.
+city_results <-
+  homicide_df |>
+  group_by(city_state) |>
+  nest() |>
+  mutate(
+    fit = map(data, ~ glm(
+      case_closed ~ victim_age + victim_sex + victim_race,
+      data = .x,
+      family = binomial
+    )),
+    tidy_fit = map(fit, ~ tidy(.x, exponentiate = TRUE, conf.int = TRUE))
+  ) |>
+  unnest(tidy_fit) |>
+  filter(term == "victim_sexMale") |>   
+  select(
+    city_state,
+    or = estimate,
+    conf.low,
+    conf.high,
+    p.value
+  )
+
+city_results |>
+   knitr::kable()
+```
+
+```{r}
+# Make Plots
+ggplot(city_results, aes(x=reorder(city_state, or), y=or)) + geom_point() + geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0) +
+  coord_flip() +
+  labs(x = "City", y = "OR (Male vs Female)") 
+```
+
+
+## Problem 2
