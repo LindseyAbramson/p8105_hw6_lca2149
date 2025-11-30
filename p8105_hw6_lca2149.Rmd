@@ -11,6 +11,8 @@ library(readxl)
 library(haven)
 library(broom)
 library(knitr)
+library(modelr)
+library(purrr)
 
 knitr::opts_chunk$set(
   fig.width = 6,
@@ -178,6 +180,100 @@ ci_beta_product =
 
 ## Problem 3
 ```{r}
+# Import and Clean Data
+birthweight_df =
+  read.csv("data/birthweight.csv") |>
+  janitor::clean_names()
 
+
+# Clean and prepare variables
+birthweight_df = 
+  birthweight_df |> 
+  mutate(
+    babysex = factor(babysex, levels = c(1, 2), labels = c("male", "female")),
+    malform = factor(malform, levels = c(0, 1), labels = c("absent", "present")),
+    mrace = factor(mrace,
+                   levels = c(1, 2, 3, 4, 8),
+                   labels = c("white", "black", "asian", "puerto_rican", "other")),
+    frace = factor(frace,
+                   levels = c(1, 2, 3, 4, 8, 9),
+                   labels = c("white", "black", "asian", "puerto_rican", "other", "unknown"))
+  )
+
+# Check for missing data
+birthweight_df |> 
+  summarize(across(everything(), ~sum(is.na(.))))
+```
+I imported and cleaned the data, converting some cateogical numeric variables to factors and confirmed that there was no missing data. 
+
+```{r}
+# Propose a model
+bw_model = lm(bwt ~ gaweeks + momage + ppbmi + ppwt + smoken,
+              data = birthweight_df)
+
+summary(bw_model)
+```
+I built this model by including factors I know influence birthweight such as maternal health, lifestyle, and genetic factors. I chose a model focusing on maternal characteristics and behaviors that are biologically linked to fetal growth. I found that gestational age was by far the greatest predictor of birthweight. Maternal age and weight increased birthweight, while smoking and higher BMI decreased it. 
+
+```{r}
+# Residuals vs Fitted Plot
+birthweight_df |> 
+  add_predictions(bw_model) |> 
+  add_residuals(bw_model) |> 
+  ggplot(aes(x = pred, y = resid)) +
+  geom_point(alpha=0.4) +
+  labs(
+    title = "Residuals vs Fitted Values",
+    x = "Fitted Values",
+    y = "Residuals"
+  ) 
 ```
 
+```{r}
+# Comparing my model to two others
+bw_model2 = lm(bwt ~ blength + gaweeks,
+              data = birthweight_df)
+summary(bw_model2)
+
+bw_model3 = lm(bwt ~ bhead * blength * babysex,
+                data = birthweight_df) 
+summary(bw_model3)
+```
+
+```{r}
+# Compare models
+set.seed(1)
+cv_df <- crossv_mc(birthweight_df, 100)
+
+# Model 1 CV RMSE
+cv_df <- cv_df |> 
+  mutate(
+    mod1 = map(train, ~ lm(bwt ~ gaweeks + momage + pnumlbw + ppbmi + ppwt + smoken, 
+                           data = .x)),
+    rmse_mod1 = map2_dbl(mod1, test, ~ rmse(.x, .y))
+  )
+
+# Model 2 CV RMSE
+cv_df <- cv_df |> 
+  mutate(
+    mod2 = map(train, ~ lm(bwt ~ blength + gaweeks, data = .x)),
+    rmse_mod2 = map2_dbl(mod2, test, ~ rmse(.x, .y))
+  )
+
+# Model 3 CV RMSE
+cv_df <- cv_df |> 
+  mutate(
+    mod3 = map(train, ~ lm(bwt ~ bhead * blength * babysex, data = .x)),
+    rmse_mod3 = map2_dbl(mod3, test, ~ rmse(.x, .y))
+  )
+
+cv_results <- cv_df |> 
+  summarise(
+    mean_rmse_mod1 = mean(rmse_mod1),
+    mean_rmse_mod2 = mean(rmse_mod2),
+    mean_rmse_mod3 = mean(rmse_mod3)
+  )
+
+cv_results
+```
+As we can see, model three has the lowest RMSE and is therefore the most accurate. As expected, more detailed measurements and interactions improve predictive accuracy. 
